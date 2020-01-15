@@ -1,20 +1,20 @@
 package com.example.mvcstructure.controller;
 
+import com.example.mvcframework.annotaion.HjAutowired;
+import com.example.mvcframework.annotaion.HjController;
+import com.example.mvcframework.annotaion.HjRequestMapping;
+import com.example.mvcframework.annotaion.HjRequestParam;
 import com.example.mvcstructure.service.TestService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
 
-@RestController
-@RequestMapping("/test")
+
+@HjController
+@HjRequestMapping("/test")
 public class TestAction {
-    @Autowired
+    @HjAutowired
     private TestService testService;
 
-    @GetMapping("/hello")
-    public String hello(@RequestParam(defaultValue = "陌生人") String name) {
+    @HjRequestMapping("/hello")
+    public String hello(@HjRequestParam("name") String name) {
         return testService.hello(name);
     }
 }

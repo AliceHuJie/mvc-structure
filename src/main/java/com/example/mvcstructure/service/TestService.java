@@ -1,8 +1,8 @@
 package com.example.mvcstructure.service;
 
-import org.springframework.stereotype.Service;
+import com.example.mvcframework.annotaion.HjService;
 
-@Service
+@HjService
 public class TestService {
     public String hello(String name) {
         return "hello" + name;
