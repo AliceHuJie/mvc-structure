@@ -1,5 +1,8 @@
 package com.example.mvcframework.servlet;
 
+import com.example.mvcframework.annotaion.HjController;
+import com.example.mvcframework.annotaion.HjService;
+
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -8,14 +11,14 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Properties;
+import java.util.*;
 
 public class MyDispatcherServlet extends HttpServlet {
     private Properties contextConfig = new Properties();
     private List<String> classNames = new ArrayList<>();
+    private Map<String, Object> ioc = new HashMap<>();
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -79,6 +82,38 @@ public class MyDispatcherServlet extends HttpServlet {
 
     // 3. 初始化所有相关的类并且将其保存到IOC容器中
     private void doInstance() {
+        if (classNames.isEmpty()) {
+            return;
+        }
+        try {
+            for (String className : classNames) {
+                Class<?> clazz = Class.forName(className);
+                // 不是所有的类都要实例化，只实例化加了注解的类
+                if (clazz.isAnnotationPresent(HjController.class)) {
+                    // 默认以类名首字母小写为key，将实例化对象放入ioc
+                    String key = firstCharToLowerCase(className);
+                    ioc.put(key, clazz.newInstance());
+                } else if (clazz.isAnnotationPresent(HjService.class)) {
+                    // 1. 默认key为类名首字母小写
+                    //2. 指定了service名称时按指定名称为key
+                    HjService serviceAnnotation = clazz.getAnnotation(HjService.class);
+                    String beanName = serviceAnnotation.value();
+                    if ("".equals(beanName.trim())) {
+                        beanName = firstCharToLowerCase(className);
+                    }
+                    Object instance = clazz.newInstance();
+                    ioc.put(beanName, instance);
+                    // 3. 根据接口类型赋值
+                    for (Class<?> i : clazz.getInterfaces()) {
+                        ioc.put(i.getName(), instance);
+                    }
+                } else {
+                    continue;
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     // 4. 执行依赖注入 把加了autowired注解的字段赋值
@@ -87,5 +122,15 @@ public class MyDispatcherServlet extends HttpServlet {
 
     // 5. 构造handleMapping, 将url和方法进行关联
     private void initHandleMapping() {
+    }
+
+
+    private String firstCharToLowerCase(String str) {
+        char[] chars = str.toCharArray();
+        if (str.isEmpty() || Character.isLowerCase(chars[0])) {
+            return str;
+        }
+        chars[0] += 32;
+        return String.valueOf(chars);
     }
 }
