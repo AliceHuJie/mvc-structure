@@ -13,7 +13,6 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.URL;
@@ -26,18 +25,35 @@ public class MyDispatcherServlet extends HttpServlet {
     private Map<String, Method> handlerMapping = new HashMap<>();
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        super.doGet(req, resp);
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        doPost(req, resp);
     }
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        // 6. 等待请求阶段
-        req.getRequestURI();
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        try {
+            doDispatch(req, resp);
+        } catch (Exception e) {
+            resp.getWriter().write("500 Server Error");
+        }
+    }
+
+    private void doDispatch(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        String url = req.getRequestURI(); // 得到请求的绝对路径
+        System.out.println(url);
+
+        String contextPath = req.getContextPath();
+
+        url = url.replace(contextPath, "").replaceAll("/+", "/");
+        if (!handlerMapping.containsKey(url)) {
+            resp.getWriter().write("404 Not Found");
+        }
+        Method method = handlerMapping.get(url);
+        System.out.println(method);
     }
 
     @Override
-    public void init(ServletConfig config) throws ServletException {
+    public void init(ServletConfig config) {
         // 1. 加载配置文件
         doLoadConfig(config.getInitParameter("contextConfigLocation"));
         // 2. 扫描所有相关的类
@@ -182,7 +198,7 @@ public class MyDispatcherServlet extends HttpServlet {
                 HjRequestMapping requestMapping = method.getAnnotation(HjRequestMapping.class);
                 String methodUrl = ("/" + baseUrl + requestMapping.value()).replaceAll("/+", "/");
                 handlerMapping.put(methodUrl, method);
-                System.out.println(String.format("mapped url %s to method %s", methodUrl, method.getName()));
+                System.out.println(String.format("mapped url %s to method %s", methodUrl, method));
             }
         }
     }
