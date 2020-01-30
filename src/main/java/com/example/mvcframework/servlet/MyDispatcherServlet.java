@@ -1,9 +1,6 @@
 package com.example.mvcframework.servlet;
 
-import com.example.mvcframework.annotaion.HjAutowired;
-import com.example.mvcframework.annotaion.HjController;
-import com.example.mvcframework.annotaion.HjRequestMapping;
-import com.example.mvcframework.annotaion.HjService;
+import com.example.mvcframework.annotaion.*;
 
 import javax.servlet.ServletConfig;
 import javax.servlet.http.HttpServlet;
@@ -12,16 +9,21 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 
 public class MyDispatcherServlet extends HttpServlet {
     private Properties contextConfig = new Properties();
     private List<String> classNames = new ArrayList<>();
     private Map<String, Object> ioc = new HashMap<>();
-    private Map<String, Method> handlerMapping = new HashMap<>();
+    private List<Handler> handlerMapping = new ArrayList<>();
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
@@ -34,22 +36,62 @@ public class MyDispatcherServlet extends HttpServlet {
             doDispatch(req, resp);
         } catch (Exception e) {
             resp.getWriter().write("500 Server Error");
+            e.printStackTrace();
         }
     }
 
-    private void doDispatch(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        String url = req.getRequestURI(); // 得到请求的绝对路径
-        System.out.println(url);
-
-        String contextPath = req.getContextPath();
-
-        url = url.replace(contextPath, "").replaceAll("/+", "/");
-        if (!handlerMapping.containsKey(url)) {
+    private void doDispatch(HttpServletRequest req, HttpServletResponse resp) throws IOException, InvocationTargetException, IllegalAccessException {
+        Handler handler = getHandler(req);
+        if (handler == null) {
             resp.getWriter().write("404 Not Found");
+            return;
         }
-        Method method = handlerMapping.get(url);
-        // method.invoke(对象， 参数);
-        System.out.println(method);
+        Method method = handler.method;
+        Class<?>[] paramTypes = method.getParameterTypes();
+
+        // 保存所有需要自动赋值的参数值
+        Object[] paramValues = new Object[paramTypes.length];
+
+
+        Map<String, String[]> params = req.getParameterMap();
+        for (Map.Entry<String, String[]> param : params.entrySet()) {
+            String value = Arrays.toString(param.getValue()).replaceAll("\\[|\\]", "");
+
+            // 如果找到匹配的对象，则开始填充参数值
+            if (!handler.paramIndexMapping.containsKey(param.getKey())) {
+                continue;
+            }
+            Integer index = handler.paramIndexMapping.get(param.getKey());
+            paramValues[index] = convert(paramTypes[index], value);
+        }
+
+        // 设置方法中的request, response对象
+        Integer reqIndex = handler.paramIndexMapping.get(HttpServletRequest.class.getName());
+        if (reqIndex != null && reqIndex > -1) {
+            paramValues[reqIndex] = req;
+        }
+
+        Integer respIndex = handler.paramIndexMapping.get(HttpServletResponse.class.getName());
+        if (respIndex != null && respIndex > -1) {
+            paramValues[respIndex] = resp;
+        }
+        handler.method.invoke(handler.controller, paramValues);
+    }
+
+    private Handler getHandler(HttpServletRequest req) {
+        if (handlerMapping.isEmpty()) {
+            return null;
+        }
+        String url = req.getRequestURI(); // 得到请求的绝对路径
+        String contextPath = req.getContextPath();
+        url = url.replace(contextPath, "").replaceAll("/+", "/");
+        for (Handler handler : handlerMapping) {
+            Matcher matcher = handler.pattern.matcher(url);
+            if (matcher.matches()) {
+                return handler;
+            }
+        }
+        return null;
     }
 
     @Override
@@ -196,13 +238,62 @@ public class MyDispatcherServlet extends HttpServlet {
                     continue;
                 }
                 HjRequestMapping requestMapping = method.getAnnotation(HjRequestMapping.class);
-                String methodUrl = ("/" + baseUrl + requestMapping.value()).replaceAll("/+", "/");
-                handlerMapping.put(methodUrl, method);
-                System.out.println(String.format("mapped url %s to method %s", methodUrl, method));
+                String regex = ("/" + baseUrl + requestMapping.value()).replaceAll("/+", "/");
+//                handlerMapping.put(methodUrl, method);
+                Pattern pattern = Pattern.compile(regex);
+                handlerMapping.add(new Handler(entry.getValue(), pattern, method));
+                System.out.println(String.format("mapped %s to method %s", regex, method));
             }
         }
     }
 
+    private class Handler {
+        private Object controller;    // 保存方法对应的实例
+        private Pattern pattern;  // url patten
+        private Method method;    // 保存映射的方法
+        private Map<String, Integer> paramIndexMapping; //  参数顺序
+
+        public Handler(Object controller, Pattern pattern, Method method) {
+            this.controller = controller;
+            this.pattern = pattern;
+            this.method = method;
+
+            paramIndexMapping = new HashMap<>();
+            putParamIndexMapping(method);
+        }
+
+        private void putParamIndexMapping(Method method) {
+            // 提取方法中加了注解的参数
+            Annotation[][] pa = method.getParameterAnnotations();
+            for (int i = 0; i < pa.length; i++) {
+                for (Annotation a : pa[i]) {
+                    if (a instanceof HjRequestParam) {
+                        String paramName = ((HjRequestParam) a).value();
+                        if (!"".equals(paramName.trim())) {
+                            paramIndexMapping.put(paramName, i);     // i 为参数顺序
+                        }
+                    }
+                }
+            }
+
+            // 提取方法中的request和response参数
+            Class<?>[] parameterTypes = method.getParameterTypes();
+            for (int i = 0; i < parameterTypes.length; i++) {
+                Class<?> type = parameterTypes[i];
+                if (HttpServletRequest.class == type || HttpServletResponse.class == type) {
+                    paramIndexMapping.put(type.getName(), i);
+                }
+            }
+        }
+    }
+
+
+    private Object convert(Class<?> type, String value) {
+        if (Integer.class == type) {
+            return Integer.valueOf(value);
+        }
+        return value;
+    }
 
     private String firstCharToLowerCase(String str) {
         char[] chars = str.toCharArray();
@@ -212,4 +303,6 @@ public class MyDispatcherServlet extends HttpServlet {
         chars[0] += 32;
         return String.valueOf(chars);
     }
+
+
 }
