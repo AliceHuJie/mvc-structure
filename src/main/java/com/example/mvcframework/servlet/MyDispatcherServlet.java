@@ -6,7 +6,6 @@ import com.example.mvcframework.annotaion.HjRequestMapping;
 import com.example.mvcframework.annotaion.HjService;
 
 import javax.servlet.ServletConfig;
-import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -49,6 +48,7 @@ public class MyDispatcherServlet extends HttpServlet {
             resp.getWriter().write("404 Not Found");
         }
         Method method = handlerMapping.get(url);
+        // method.invoke(对象， 参数);
         System.out.println(method);
     }
 
